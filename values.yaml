@@ -1,0 +1,123 @@
+# Default values for ibm-content-navigator.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+initContainer:
+  pullPolicy: Always
+  imagePullSecrets: null
+  image:
+    repository: gcr.io/multipass-246109/cpe 
+    tag: origoss
+  initFile: |-
+    set -ex
+    cp /opt/jar_files/* /opt/ibm/wlp/usr/servers/defaultServer/configDropins/overrides
+    chmod 777 -R /opt/ibm/wlp/usr/servers/defaultServer/configDropins/overrides
+
+
+# Set default image, imageTag, and imagePullPolicy.
+image:
+  repository: gcr.io/multipass-246109/navigator
+  tag: ga-305-icn-if002
+  pullPolicy: Always
+
+
+# Optionally specify an array of imagePullSecrets.
+# Secrets must be manually created in the namespace.
+# ref: https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+#
+# imagePullSecrets:
+# - name: myRegistryKeySecretName
+
+
+# If type is NodePort and nodePort is set null it will be exposed in a random port.
+service:
+  type: NodePort
+  httpPort: 9080
+  httpNodePort: null
+  httpsPort: 9443
+  httpsNodePort: 30138
+  sessionAffinity: ClientIP
+
+
+replicaCount: 1
+
+
+# Update strategy for deployment, can be set to RollingUpdate or OnDelete by default.
+# https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+updateStrategy: 
+  type: RollingUpdate
+  # maxSurge: 25%
+  # maxUnavailable: 25%
+
+# Environment varibles for deployment
+envs:
+  LICENSE: accept
+  JVM_HEAP_XMS: 512m
+  JVM_HEAP_XMX: 1024m
+  TZ: Etc/UTC
+  ICNADMIN: p8admin
+  ICNDBTYPE: db2
+  ICNJNDIDS: ECMClientDS
+  ICNSCHEMA: ICNDB
+  ICNTS: ICNDBTS
+  navigatorMode: 0
+
+# By default this will make sure two pods don't end up on the same node
+# Changing this to a region would allow you to spread pods across regions
+antiAffinityTopologyKey: "kubernetes.io/hostname"
+
+# Hard means that by default pods will only be scheduled if there are enough nodes for them
+# and that they will never end up on the same node. Setting this to soft will do this "best effort"
+antiAffinity: "soft"
+
+ingress:
+  enabled: false
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  path: /
+  hosts:
+    - chart-example.local
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.
+  
+
+persistence:
+  # If true, cpe will create/use a Persistent Volume Claim
+  # If false, use emptyDir
+  enabled: false
+  # cpe data Persistent Volume access modes
+  # Must match those of existing PV or dynamic provisioner
+  # Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+  accessModes:
+    - ReadWriteOnce
+
+  # cpe data Persistent Volume Storage Class
+  # If defined, storageClassName: <storageClass>
+  # If set to "-", storageClassName: "", which disables dynamic provisioning
+  # If undefined (the default) or set to null, no storageClassName spec is
+  # set, choosing the default provisioner.  (gp2 on AWS, standard on
+  # GKE, AWS & OpenStack)
+  # storageClass: "-"
+
+  # cpe data Persistent Volume existing claim name
+  # If defined, PVC must be created manually before volume will be bound
+  existingClaim: ""
+  
+  # Size of the Persistent Volume in case of dynamic provisioning
+  size: 11Gi
+
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #  cpu: 100m
+  #  memory: 128Mi
+  # requests:
+  #  cpu: 100m
+  #  memory: 128Mi

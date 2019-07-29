@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "ibm-content-navigator.fullname" . }}
+  labels:
+    app: {{ template "ibm-content-navigator.name" . }}
+    chart: {{ template "ibm-content-navigator.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+data:
+{{- (.Files.Glob "configs/*").AsConfig | nindent 2 }}
+

@@ -1,0 +1,162 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "ibm-content-navigator.fullname" . }}
+  labels:
+    app: {{ template "ibm-content-navigator.name" . }}
+    chart: {{ template "ibm-content-navigator.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "ibm-content-navigator.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "ibm-content-navigator.name" . }}
+        release: {{ .Release.Name }}
+    spec:
+      affinity:
+      {{- if eq .Values.antiAffinity "hard" }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: "{{ template "ibm-content-navigator.name" . }}"
+                  release: "{{ .Release.Name }}"
+      {{- else if eq .Values.antiAffinity "soft" }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: "{{ template "ibm-content-navigator.name" . }}"
+                  release: "{{ .Release.Name }}"
+      {{- end }}
+      initContainers:
+      - name: "init-icn"
+        imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
+        {{- if .Values.initContainer.imagePullSecrets }}
+        imagePullSecrets:
+{{ toYaml .Values.image.initContainer.PullSecrets | indent 8 }}
+        {{- end }}
+        image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}"
+        command:
+        - "/bin/bash"
+        args:
+        - "/opt/pre-script/pre_script.sh"
+        volumeMounts:
+        - name: pre-script
+          mountPath: "/opt/pre-script/"
+          subpath: pre-script
+        - name: icn-storage
+          mountPath: "/opt/ibm/wlp/usr/servers/defaultServer/configDropins/overrides"  
+          subPath: icn/configDropins/overrides
+        - name: icn-storage
+          mountPath: "/opt/ibm/wlp/usr/servers/defaultServer/logs"  
+          subPath: icn/logs
+        - name: icn-storage
+          mountPath: "/opt/ibm/plugins"  
+          subPath: plugins
+        - name: icn-storage
+          mountPath: "/opt/ibm/viewerconfig/cache"  
+          subPath: viewercache
+        - name: icn-storage
+          mountPath: "/opt/ibm/viewerconfig/logs"  
+          subPath: viewerlogs
+      containers:
+      - image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        imagePullSecrets:
+        {{- range .Values.imagePullSecrets }}
+        - {{ . }}
+        {{- end }}
+        name: {{ .Chart.Name }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.httpPort }}
+          protocol: TCP
+        - name: https
+          containerPort: {{ .Values.service.httpsPort }}
+          protocol: TCP
+        env:
+        {{- range $key, $value :=  .Values.envs }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        readinessProbe:
+          httpGet:
+            path: /navigator
+            port: 9080
+            httpHeaders:
+              - name: Content-Encoding
+                value: gzip
+          initialDelaySeconds: 180
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /navigator
+            port: 9080
+            httpHeaders:
+              - name: Content-Encoding
+                value: gzip
+          initialDelaySeconds: 600
+          periodSeconds: 5
+        volumeMounts:
+        - name: icn-storage
+          mountPath: "/opt/ibm/wlp/usr/servers/defaultServer/configDropins/overrides"  
+          subPath: icn/configDropins/overrides
+        - name: icn-storage
+          mountPath: "/opt/ibm/wlp/usr/servers/defaultServer/logs"  
+          subPath: icn/logs
+        - name: icn-storage
+          mountPath: "/opt/ibm/plugins"  
+          subPath: plugins
+        - name: icn-storage
+          mountPath: "/opt/ibm/viewerconfig/cache"  
+          subPath: viewercache
+        - name: icn-storage
+          mountPath: "/opt/ibm/viewerconfig/logs"  
+          subPath: viewerlogs
+        {{- range $path, $bytes := .Files.Glob "configs/*" }}
+        - name: {{ printf "%s-%s" (split "." (base $path))._0 "config" | lower | replace "_" "-" }}
+          mountPath: {{ printf "%s/%s" "/opt/ibm/wlp/usr/servers/defaultServer/configDropins/overrides/" (base $path) }}
+          subPath: {{ base $path }}
+        {{- end }}
+      volumes:
+      - name: pre-script
+        secret:
+          secretName: {{ template "ibm-content-navigator.fullname" . }}
+      - name: icn-storage
+        {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.persistence.existingClaim | default (include "ibm-content-navigator.fullname" .) }}
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      {{- range $path, $bytes := .Files.Glob "configs/*" }}
+      - name: {{ printf "%s-%s" (split "." (base $path))._0 "config" | lower | replace "_" "-" }}
+        configMap:
+          name: {{ template "ibm-content-navigator.fullname" $ }}
+          items:
+          - key: {{ base $path }}
+            path: {{ base $path }}
+      {{- end }}
